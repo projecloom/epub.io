@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOIDREAD — EPUB Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=Black+Ops+One&family=Russo+One&family=Share+Tech+Mono&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{--red:#ff0033;--yellow:#ffe600;--cyan:#00f5ff;--black:#050505;--dark:#0d0d0d;--neon-green:#39ff14;--orange:#ff6a00;--panel:#0a0a0a;--border:rgba(0,245,255,0.15);--text-dim:rgba(255,255,255,0.25);}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--black);color:white;font-family:'Share Tech Mono',monospace;height:100vh;overflow:hidden;cursor:crosshair;}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.12) 2px,rgba(0,0,0,0.12) 4px);pointer-events:none;z-index:9999;}
+.app{display:grid;grid-template-rows:48px 1fr;grid-template-columns:260px 1fr 220px;height:100vh;}
+.topbar{grid-column:1/-1;background:var(--panel);border-bottom:1px solid var(--red);display:flex;align-items:center;padding:0 16px;gap:14px;position:relative;overflow:hidden;}
+.topbar::after{content:'';position:absolute;bottom:0;left:0;height:1px;width:100%;background:linear-gradient(90deg,var(--red),var(--orange),var(--yellow),var(--cyan),transparent);animation:scanline 3s linear infinite;}
+@keyframes scanline{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+.logo-small{font-family:'Black Ops One',cursive;font-size:1.2rem;color:var(--yellow);text-shadow:2px 2px 0 var(--red),0 0 20px rgba(255,230,0,0.4);letter-spacing:2px;animation:glt 6s infinite;white-space:nowrap;}
+@keyframes glt{0%,88%,100%{color:var(--yellow);transform:none}89%{color:var(--cyan);transform:translate(-2px,0)}90%{color:var(--red);transform:translate(2px,0)}91%{color:var(--yellow);transform:none}}
+.sep{width:1px;height:24px;background:rgba(255,255,255,0.1);}
+.upload-btn{background:var(--red);border:none;color:white;font-family:'Russo One',sans-serif;font-size:0.65rem;letter-spacing:4px;padding:7px 16px;cursor:pointer;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));transition:all 0.15s;text-transform:uppercase;white-space:nowrap;}
+.upload-btn:hover{background:var(--orange);box-shadow:0 0 20px rgba(255,106,0,0.5);}
+#fileInput{display:none;}
+.topbar-info{flex:1;font-size:0.62rem;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.topbar-info span{color:var(--cyan);}
+.topbar-right{display:flex;align-items:center;gap:8px;margin-left:auto;}
+.font-ctrl,.theme-toggle{background:transparent;border:1px solid rgba(255,255,255,0.1);color:rgba(255,255,255,0.4);font-family:'Share Tech Mono',monospace;font-size:0.72rem;padding:4px 10px;cursor:pointer;transition:all 0.15s;letter-spacing:2px;}
+.font-ctrl:hover{border-color:var(--cyan);color:var(--cyan);}
+.theme-toggle:hover{border-color:var(--yellow);color:var(--yellow);}
+.sidebar-left{background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;}
+.sidebar-left::-webkit-scrollbar{width:3px;}.sidebar-left::-webkit-scrollbar-thumb{background:var(--red);}
+.sidebar-header{padding:14px 16px 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--panel);z-index:2;}
+.sidebar-header h3{font-family:'Russo One',sans-serif;font-size:0.6rem;letter-spacing:5px;color:var(--cyan);text-transform:uppercase;}
+.book-cover{margin:14px 16px;aspect-ratio:2/3;background:linear-gradient(135deg,rgba(255,0,51,0.2),rgba(0,245,255,0.1));border:1px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+.book-cover img{width:100%;height:100%;object-fit:cover;opacity:0.85;}
+.no-cover{font-family:'Black Ops One',cursive;font-size:2rem;color:rgba(255,230,0,0.3);text-align:center;padding:10px;line-height:1.2;}
+.book-meta{padding:0 16px 14px;border-bottom:1px solid var(--border);}
+.book-meta .title{font-family:'Russo One',sans-serif;font-size:0.75rem;color:var(--yellow);line-height:1.4;margin-bottom:4px;}
+.book-meta .author{font-size:0.65rem;color:var(--text-dim);letter-spacing:2px;}
+.toc-list{list-style:none;padding:10px 0;flex:1;}
+.toc-item{padding:8px 16px;font-size:0.7rem;color:rgba(255,255,255,0.35);cursor:pointer;transition:all 0.15s;border-left:2px solid transparent;letter-spacing:1px;line-height:1.4;display:flex;align-items:flex-start;gap:6px;}
+.toc-item::before{content:'▸';color:var(--red);font-size:0.6rem;flex-shrink:0;margin-top:2px;}
+.toc-item:hover{color:white;border-left-color:var(--cyan);background:rgba(0,245,255,0.04);padding-left:20px;}
+.toc-item.active{color:var(--cyan);border-left-color:var(--cyan);background:rgba(0,245,255,0.06);}
+.reader-wrap{position:relative;overflow:hidden;background:var(--dark);display:flex;flex-direction:column;}
+.reader-area{flex:1;overflow-y:auto;padding:60px 80px;scroll-behavior:smooth;}
+.reader-area::-webkit-scrollbar{width:4px;}.reader-area::-webkit-scrollbar-thumb{background:var(--red);}
+.drop-zone{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px;text-align:center;padding:40px;animation:fadeIn 0.5s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.drop-icon{font-size:4rem;animation:bounce 2s ease-in-out infinite;}
+@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
+.drop-zone h2{font-family:'Black Ops One',cursive;font-size:clamp(1.5rem,4vw,3rem);color:var(--yellow);text-shadow:2px 2px 0 var(--red);letter-spacing:4px;}
+.drop-zone p{font-size:0.8rem;color:var(--text-dim);letter-spacing:3px;text-transform:uppercase;max-width:400px;line-height:1.8;}
+.drop-zone .hint{border:1px dashed rgba(0,245,255,0.2);padding:14px 28px;font-size:0.7rem;letter-spacing:4px;color:rgba(0,245,255,0.4);text-transform:uppercase;animation:pb 2s ease-in-out infinite alternate;}
+@keyframes pb{from{border-color:rgba(0,245,255,0.2);color:rgba(0,245,255,0.4)}to{border-color:rgba(0,245,255,0.5);color:rgba(0,245,255,0.7)}}
+.book-content{max-width:680px;margin:0 auto;animation:fadeIn 0.4s ease;cursor:text;}
+body.light-mode .reader-area{background:#f5f0e8;}
+body.light-mode .book-content p{color:#2a2018;}
+body.light-mode .book-content h1{color:#8b0000;}
+body.light-mode .book-content h2{color:#005f6b;}
+.book-content h1{font-family:'Crimson Pro',serif;font-size:2.2rem;font-weight:600;color:var(--yellow);margin:0 0 10px;line-height:1.2;}
+.book-content h2{font-family:'Crimson Pro',serif;font-size:1.6rem;font-weight:600;color:var(--cyan);margin:40px 0 16px;padding-bottom:8px;border-bottom:1px solid rgba(0,245,255,0.15);}
+.book-content h3{font-family:'Russo One',sans-serif;font-size:0.9rem;letter-spacing:4px;text-transform:uppercase;color:var(--red);margin:30px 0 12px;}
+.book-content h4,.book-content h5,.book-content h6{font-family:'Russo One',sans-serif;font-size:0.8rem;letter-spacing:3px;color:var(--orange);margin:20px 0 10px;}
+.book-content p{font-family:'Crimson Pro',serif;font-size:1.15rem;line-height:1.95;color:rgba(255,255,255,0.82);margin-bottom:1.2em;text-align:justify;hyphens:auto;}
+.book-content p:first-of-type::first-letter{font-family:'Black Ops One',cursive;font-size:4rem;float:left;line-height:0.75;margin:8px 10px 0 0;color:var(--red);text-shadow:3px 3px 0 var(--yellow);}
+.book-content em{color:var(--cyan);font-style:italic;}
+.book-content strong{color:var(--yellow);font-weight:600;}
+.book-content blockquote{border-left:3px solid var(--red);margin:24px 0;padding:12px 24px;background:rgba(255,0,51,0.04);font-family:'Crimson Pro',serif;font-style:italic;font-size:1.1rem;color:rgba(255,255,255,0.6);}
+.book-content img{max-width:100%;display:block;margin:24px auto;border:1px solid var(--border);}
+.book-content a{color:var(--cyan);text-decoration:none;border-bottom:1px solid rgba(0,245,255,0.3);}
+.book-content a:hover{color:var(--yellow);}
+.book-content ul,.book-content ol{font-family:'Crimson Pro',serif;font-size:1.1rem;color:rgba(255,255,255,0.75);margin:0 0 1em 1.5em;line-height:1.9;}
+.book-content hr{border:none;border-top:1px solid rgba(255,255,255,0.1);margin:32px 0;position:relative;}
+.book-content hr::after{content:'◆';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--dark);padding:0 12px;color:var(--red);font-size:0.7rem;}
+.book-content table{width:100%;border-collapse:collapse;margin:20px 0;font-family:'Share Tech Mono',monospace;font-size:0.8rem;}
+.book-content th{background:rgba(255,0,51,0.15);color:var(--yellow);padding:10px 14px;border:1px solid rgba(255,0,51,0.2);letter-spacing:2px;text-transform:uppercase;font-size:0.7rem;}
+.book-content td{padding:8px 14px;border:1px solid var(--border);color:rgba(255,255,255,0.6);}
+.book-content tr:nth-child(even) td{background:rgba(255,255,255,0.02);}
+.chapter-start{border-top:2px solid var(--red);margin:48px 0 32px;padding-top:32px;position:relative;}
+.chapter-start::before{content:'CHAPTER';position:absolute;top:-10px;left:0;background:var(--dark);color:var(--red);font-family:'Russo One',sans-serif;font-size:0.55rem;letter-spacing:5px;padding:0 10px 0 0;}
+.bottom-bar{height:36px;background:var(--panel);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:14px;font-size:0.62rem;letter-spacing:3px;color:var(--text-dim);text-transform:uppercase;}
+.progress-line{flex:1;height:3px;background:rgba(255,255,255,0.05);position:relative;cursor:pointer;}
+.progress-fill{height:100%;background:linear-gradient(90deg,var(--red),var(--orange),var(--yellow));transition:width 0.3s;position:relative;}
+.progress-fill::after{content:'';position:absolute;right:-2px;top:-3px;width:8px;height:8px;background:var(--yellow);border-radius:50%;box-shadow:0 0 8px var(--yellow);}
+.page-info{color:var(--cyan);white-space:nowrap;}
+.sidebar-right{background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;}
+.sidebar-right::-webkit-scrollbar{width:3px;}.sidebar-right::-webkit-scrollbar-thumb{background:var(--red);}
+.right-section{border-bottom:1px solid var(--border);padding:14px 14px 16px;}
+.right-section h4{font-family:'Russo One',sans-serif;font-size:0.58rem;letter-spacing:5px;color:var(--cyan);text-transform:uppercase;margin-bottom:12px;}
+.stat-mini{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;}
+.stat-mini .v{font-family:'Black Ops One',cursive;font-size:1.2rem;color:var(--yellow);}
+.stat-mini .l{font-size:0.58rem;letter-spacing:2px;color:var(--text-dim);text-transform:uppercase;}
+.bookmark-item{padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;transition:all 0.15s;}
+.bookmark-item:hover{padding-left:6px;}
+.bookmark-item .bk-title{font-size:0.7rem;color:rgba(255,255,255,0.5);line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.bookmark-item .bk-pct{font-size:0.58rem;color:var(--red);letter-spacing:2px;}
+.add-bookmark-btn{width:100%;background:transparent;border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.3);font-family:'Share Tech Mono',monospace;font-size:0.65rem;padding:8px;cursor:pointer;letter-spacing:3px;text-transform:uppercase;transition:all 0.15s;margin-top:10px;}
+.add-bookmark-btn:hover{border-color:var(--yellow);color:var(--yellow);background:rgba(255,230,0,0.05);}
+.search-input{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--border);color:white;font-family:'Share Tech Mono',monospace;font-size:0.72rem;padding:8px 10px;outline:none;caret-color:var(--cyan);letter-spacing:1px;}
+.search-input:focus{border-color:var(--cyan);}
+.search-input::placeholder{color:var(--text-dim);}
+.search-result{padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04);cursor:pointer;font-size:0.68rem;color:rgba(255,255,255,0.4);line-height:1.5;transition:color 0.15s;}
+.search-result:hover{color:var(--cyan);}
+.search-result mark{background:rgba(255,230,0,0.25);color:var(--yellow);border-radius:2px;padding:0 2px;}
+.nav-btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:12px 14px;}
+.nav-btn{background:transparent;border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.3);font-family:'Share Tech Mono',monospace;font-size:0.65rem;padding:9px 6px;cursor:pointer;text-align:center;letter-spacing:2px;text-transform:uppercase;transition:all 0.15s;}
+.nav-btn:hover{border-color:var(--red);color:var(--red);background:rgba(255,0,51,0.06);}
+::selection{background:rgba(255,230,0,0.3);color:white;}
+.corner-deco{position:fixed;font-size:0.5rem;letter-spacing:3px;color:rgba(255,0,51,0.25);font-family:'Share Tech Mono',monospace;pointer-events:none;z-index:100;}
+.corner-deco.tl{top:8px;left:8px;}.corner-deco.tr{top:8px;right:8px;}
+.toast{position:fixed;bottom:60px;left:50%;transform:translateX(-50%) translateY(30px);background:var(--panel);border:1px solid var(--neon-green);color:var(--neon-green);font-family:'Share Tech Mono',monospace;font-size:0.7rem;letter-spacing:3px;padding:10px 24px;opacity:0;transition:all 0.3s;pointer-events:none;z-index:1000;white-space:nowrap;clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px));}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.loading-bar{position:fixed;top:48px;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--red),var(--orange),var(--yellow),var(--cyan));z-index:1000;display:none;animation:lda 1.2s ease-in-out infinite;}
+.loading-bar.active{display:block;}
+@keyframes lda{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+@media(max-width:900px){.app{grid-template-columns:0 1fr 0;}.sidebar-left,.sidebar-right{display:none;}.reader-area{padding:40px 24px;}}
+</style>
+</head>
+<body>
+<div class="corner-deco tl">VOIDREAD::SYS</div>
+<div class="corner-deco tr">EPUB_ENGINE_v2</div>
+<div class="loading-bar" id="loadingBar"></div>
+<div class="toast" id="toast"></div>
+<div class="app">
+  <header class="topbar">
+    <div class="logo-small">VOIDREAD</div>
+    <div class="sep"></div>
+    <button class="upload-btn" onclick="document.getElementById('fileInput').click()">⚡ LOAD EPUB</button>
+    <input type="file" id="fileInput" accept=".epub">
+    <div class="topbar-info" id="topbarInfo"><span>NO FILE LOADED</span> — DROP AN .EPUB OR CLICK LOAD</div>
+    <div class="topbar-right">
+      <button class="font-ctrl" onclick="changeFontSize(-1)">A−</button>
+      <button class="font-ctrl" onclick="changeFontSize(1)">A+</button>
+      <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">☀ LIGHT</button>
+    </div>
+  </header>
+  <aside class="sidebar-left">
+    <div class="sidebar-header"><h3>◈ Table of Contents</h3></div>
+    <div class="book-cover" id="bookCover"><div class="no-cover">VOID<br>READ</div></div>
+    <div class="book-meta" id="bookMeta" style="display:none">
+      <div class="title" id="metaTitle">—</div>
+      <div class="author" id="metaAuthor">—</div>
+    </div>
+    <ul class="toc-list" id="tocList">
+      <li class="toc-item" style="opacity:0.3;pointer-events:none">No chapters loaded</li>
+    </ul>
+  </aside>
+  <main class="reader-wrap">
+    <div class="reader-area" id="readerArea">
+      <div class="drop-zone">
+        <div class="drop-icon">📖</div>
+        <h2>VOIDREAD</h2>
+        <p>Drop an .epub file here or click <strong style="color:var(--yellow)">LOAD EPUB</strong> above</p>
+        <div class="hint">▼ DRAG &amp; DROP .EPUB ▼</div>
+      </div>
+    </div>
+    <div class="bottom-bar">
+      <span style="color:var(--red);font-size:0.6rem">▶</span>
+      <div class="progress-line" id="progressLine" onclick="seekTo(event)">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <span class="page-info" id="pageInfo">0%</span>
+    </div>
+  </main>
+  <aside class="sidebar-right">
+    <div class="right-section">
+      <h4>◈ Reading Stats</h4>
+      <div class="stat-mini"><span class="v" id="statPct">0%</span><span class="l">Complete</span></div>
+      <div class="stat-mini"><span class="v" id="statWpm">—</span><span class="l">Words</span></div>
+      <div class="stat-mini"><span class="v" id="statChap">—</span><span class="l">Chapters</span></div>
+    </div>
+    <div class="right-section">
+      <h4>◈ Bookmarks</h4>
+      <div id="bookmarkList" style="font-size:0.65rem;color:var(--text-dim);letter-spacing:1px">No bookmarks yet.</div>
+      <button class="add-bookmark-btn" onclick="addBookmark()">+ ADD BOOKMARK</button>
+    </div>
+    <div class="right-section">
+      <h4>◈ Search</h4>
+      <input type="text" class="search-input" id="searchInput" placeholder="Search text...">
+      <div id="searchResults" style="margin-top:8px;max-height:180px;overflow-y:auto"></div>
+    </div>
+    <div class="nav-btns">
+      <button class="nav-btn" onclick="prevChapter()">◀ PREV</button>
+      <button class="nav-btn" onclick="nextChapter()">NEXT ▶</button>
+    </div>
+  </aside>
+</div>
+<script>
+const state={chapters:[],currentChapter:0,toc:[],bookmarks:[],fontSize:18,lightMode:false};
+function toast(msg,dur=2200){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
+function loading(on){document.getElementById('loadingBar').classList.toggle('active',on);}
+document.getElementById('fileInput').addEventListener('change',e=>{if(e.target.files[0])loadEpub(e.target.files[0]);});
+const readerArea=document.getElementById('readerArea');
+readerArea.addEventListener('dragover',e=>{e.preventDefault();});
+readerArea.addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f&&f.name.endsWith('.epub'))loadEpub(f);else toast('EPUB FILES ONLY');});
+async function loadEpub(file){
+  loading(true);toast('LOADING EPUB...');
+  try{
+    const zip=await JSZip.loadAsync(file);
+    const containerXml=await zip.file('META-INF/container.xml').async('text');
+    const rootfilePath=containerXml.match(/full-path="([^"]+)"/)?.[1];
+    if(!rootfilePath)throw new Error('Cannot find rootfile');
+    const opfText=await zip.file(rootfilePath).async('text');
+    const opfDir=rootfilePath.includes('/')?rootfilePath.split('/').slice(0,-1).join('/')+'/' :'';
+    const parser=new DOMParser();
+    const opfDoc=parser.parseFromString(opfText,'application/xml');
+    const title=opfDoc.querySelector('title')?.textContent||file.name.replace('.epub','');
+    const author=opfDoc.querySelector('creator')?.textContent||'Unknown Author';
+    document.getElementById('metaTitle').textContent=title;
+    document.getElementById('metaAuthor').textContent=author;
+    document.getElementById('bookMeta').style.display='block';
+    document.getElementById('topbarInfo').innerHTML='<span>'+title+'</span> &mdash; '+author;
+    const items={};
+    opfDoc.querySelectorAll('manifest item').forEach(item=>{items[item.getAttribute('id')]={href:opfDir+item.getAttribute('href'),mediaType:item.getAttribute('media-type')};});
+    const spineItems=[...opfDoc.querySelectorAll('spine itemref')].map(i=>i.getAttribute('idref'));
+    const htmlItems=spineItems.map(id=>items[id]).filter(i=>i&&i.mediaType?.includes('html'));
+    const coverId=opfDoc.querySelector('meta[name="cover"]')?.getAttribute('content');
+    if(coverId&&items[coverId]){try{const imgData=await zip.file(items[coverId].href)?.async('base64');if(imgData){const mt=items[coverId].mediaType||'image/jpeg';document.getElementById('bookCover').innerHTML='<img src="data:'+mt+';base64,'+imgData+'" alt="Cover">';}}catch(e){}}
+    state.chapters=[];state.toc=[];let wordCount=0;
+    for(let idx=0;idx<htmlItems.length;idx++){
+      const item=htmlItems[idx];
+      try{
+        let html=await zip.file(item.href)?.async('text');
+        if(!html)continue;
+        const imgRe=/(?:src|href)="([^"]+\.(png|jpg|jpeg|gif|svg|webp))"/gi;
+        for(const m of [...html.matchAll(imgRe)]){const imgPath=resolveRelPath(item.href,m[1]);const imgFile=zip.file(imgPath);if(imgFile){const b64=await imgFile.async('base64');const mt=m[2]==='svg'?'image/svg+xml':'image/'+m[2];html=html.replace(m[0],m[0].replace(m[1],'data:'+mt+';base64,'+b64));}}
+        const doc=parser.parseFromString(html,'text/html');
+        const body=doc.body;
+        body.querySelectorAll('script,style,link').forEach(el=>el.remove());
+        const words=(body.textContent||'').split(/\s+/).filter(Boolean).length;
+        wordCount+=words;
+        const chTitle=doc.querySelector('h1,h2,h3,title')?.textContent?.trim()||'Chapter '+(idx+1);
+        state.chapters.push({html:body.innerHTML,title:chTitle});
+        state.toc.push({title:chTitle,index:idx});
+      }catch(e){}
+    }
+    state.currentChapter=0;state.bookmarks=[];
+    buildTOC();renderChapter(0);
+    document.getElementById('statChap').textContent=state.chapters.length;
+    document.getElementById('statWpm').textContent=wordCount.toLocaleString();
+    loading(false);toast('LOADED — '+state.chapters.length+' CHAPTERS');
+  }catch(err){loading(false);toast('ERROR: '+err.message);console.error(err);}
+}
+function resolveRelPath(base,rel){if(rel.startsWith('data:')||rel.startsWith('http'))return rel;const parts=base.split('/');parts.pop();rel.split('/').forEach(p=>{if(p==='..')parts.pop();else if(p!=='.')parts.push(p);});return parts.join('/');}
+function renderChapter(idx){
+  if(!state.chapters.length)return;
+  idx=Math.max(0,Math.min(idx,state.chapters.length-1));
+  state.currentChapter=idx;
+  const area=document.getElementById('readerArea');
+  area.innerHTML='<div class="book-content" id="bookContent"><div class="chapter-start"></div>'+state.chapters[idx].html+'</div>';
+  area.scrollTop=0;
+  document.querySelectorAll('.toc-item').forEach((el,i)=>el.classList.toggle('active',i===idx));
+  updateProgress();
+  area.addEventListener('scroll',updateProgress,{passive:true});
+}
+function buildTOC(){const list=document.getElementById('tocList');list.innerHTML='';state.toc.forEach((item,i)=>{const li=document.createElement('li');li.className='toc-item'+(i===0?' active':'');li.textContent=item.title;li.addEventListener('click',()=>renderChapter(i));list.appendChild(li);});}
+function updateProgress(){const area=document.getElementById('readerArea');const scrollable=area.scrollHeight-area.clientHeight;const chapPct=scrollable>0?area.scrollTop/scrollable:0;const globalPct=state.chapters.length?((state.currentChapter+chapPct)/state.chapters.length)*100:0;document.getElementById('progressFill').style.width=globalPct+'%';document.getElementById('pageInfo').textContent=Math.round(globalPct)+'%';document.getElementById('statPct').textContent=Math.round(globalPct)+'%';}
+function nextChapter(){if(state.currentChapter<state.chapters.length-1){renderChapter(state.currentChapter+1);toast('NEXT CHAPTER');}else toast('END OF BOOK');}
+function prevChapter(){if(state.currentChapter>0){renderChapter(state.currentChapter-1);toast('PREV CHAPTER');}else toast('FIRST CHAPTER');}
+function seekTo(e){if(!state.chapters.length)return;const line=document.getElementById('progressLine');renderChapter(Math.floor((e.offsetX/line.clientWidth)*state.chapters.length));}
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight'||e.key==='ArrowDown')nextChapter();if(e.key==='ArrowLeft'||e.key==='ArrowUp')prevChapter();});
+function changeFontSize(d){state.fontSize=Math.max(12,Math.min(28,state.fontSize+d));document.querySelectorAll('.book-content p,.book-content li').forEach(el=>el.style.fontSize=state.fontSize+'px');toast('FONT: '+state.fontSize+'PX');}
+function toggleTheme(){state.lightMode=!state.lightMode;document.body.classList.toggle('light-mode',state.lightMode);document.getElementById('themeBtn').textContent=state.lightMode?'🌑 DARK':'☀ LIGHT';toast(state.lightMode?'LIGHT MODE':'DARK MODE');}
+function addBookmark(){if(!state.chapters.length)return toast('NO BOOK LOADED');const area=document.getElementById('readerArea');const scrollable=area.scrollHeight-area.clientHeight;const pct=scrollable>0?Math.round(area.scrollTop/scrollable*100):0;const globalPct=Math.round(((state.currentChapter+pct/100)/state.chapters.length)*100);state.bookmarks.push({chapIdx:state.currentChapter,title:state.chapters[state.currentChapter].title,pct:globalPct});renderBookmarks();toast('BOOKMARK ADDED ★');}
+function renderBookmarks(){const list=document.getElementById('bookmarkList');if(!state.bookmarks.length){list.innerHTML='<div style="font-size:0.65rem;color:var(--text-dim)">No bookmarks yet.</div>';return;}list.innerHTML=state.bookmarks.map(bk=>'<div class="bookmark-item" onclick="renderChapter('+bk.chapIdx+')"><div class="bk-title">★ '+bk.title+'</div><div class="bk-pct">'+bk.pct+'% through</div></div>').join('');}
+let searchTimeout;
+document.getElementById('searchInput').addEventListener('input',e=>{clearTimeout(searchTimeout);searchTimeout=setTimeout(()=>doSearch(e.target.value.trim()),300);});
+function doSearch(query){const results=document.getElementById('searchResults');if(!query||query.length<2){results.innerHTML='';return;}if(!state.chapters.length)return;const matches=[];const re=new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');state.chapters.forEach((chap,idx)=>{const doc=new DOMParser().parseFromString(chap.html,'text/html');const text=doc.body.textContent||'';const m=text.match(re);if(m){const pos=text.search(re);const snippet=text.slice(Math.max(0,pos-30),pos+60).replace(/\n/g,' ');matches.push({idx,title:chap.title,snippet:snippet.replace(re,w=>'<mark>'+w+'</mark>'),count:m.length});}});if(!matches.length){results.innerHTML='<div style="font-size:0.65rem;color:var(--text-dim);padding:6px 0">No results.</div>';return;}results.innerHTML=matches.slice(0,8).map(m=>'<div class="search-result" onclick="renderChapter('+m.idx+')"><div style="color:var(--cyan);font-size:0.6rem;letter-spacing:2px;margin-bottom:2px">'+m.title+' ('+m.count+' hit'+(m.count>1?'s':'')+')</div>...'+m.snippet+'...</div>').join('');}
+const colors=['#ff0033','#ffe600','#00f5ff','#39ff14','#ff6a00'];
+const ss=document.createElement('style');ss.textContent='@keyframes spark{from{transform:translate(0,0) scale(1);opacity:1}to{transform:translate(var(--dx),var(--dy)) scale(0);opacity:0}}';document.head.appendChild(ss);
+document.addEventListener('click',e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;for(let i=0;i<5;i++){const s=document.createElement('div');const angle=(i/5)*Math.PI*2;const dist=20+Math.random()*30;s.style.cssText='position:fixed;left:'+e.clientX+'px;top:'+e.clientY+'px;width:3px;height:3px;background:'+colors[i%5]+';pointer-events:none;z-index:10000;border-radius:50%;--dx:'+Math.cos(angle)*dist+'px;--dy:'+Math.sin(angle)*dist+'px;animation:spark 0.4s ease-out forwards;';document.body.appendChild(s);setTimeout(()=>s.remove(),400);}});
+</script>
+</body>
+</html>
